@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PlusCircle, FolderKey, Trash2 } from "lucide-react";
-import { useVault, INSTRUMENT_TYPES, VaultFileEntry } from "./VaultContext";
+import { useVault, INSTRUMENT_TYPES, VaultFileEntry, formatDateTime, getRecordDisplayName } from "./VaultContext";
 import CategoryTable from "./CategoryTable";
 import TailoredForm from "./TailoredForm";
 
@@ -20,13 +20,15 @@ export default function CategoryView({ categoryId }: CategoryViewProps) {
 
   const {
     isDemo, vaultIndex, searchTerm,
-    handleAddRecord, handleDeleteRecord
+    handleAddRecord, handleDeleteRecord, getCategoryLastUpdated
   } = useVault();
 
   // Local Component States
   const [formData, setFormData] = useState<Record<string, string>>({});
 
   const currentInfo = INSTRUMENT_TYPES.find(i => i.id === categoryId);
+  const rawLastUpdated = getCategoryLastUpdated(categoryId);
+  const lastUpdatedStr = rawLastUpdated ? formatDateTime(rawLastUpdated) : "";
 
   // Clear local form states when switching categories
   useEffect(() => {
@@ -46,7 +48,7 @@ export default function CategoryView({ categoryId }: CategoryViewProps) {
   const searchedFiles = filteredFiles.filter(f => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
-    const matchesName = f.name.toLowerCase().includes(term);
+    const matchesName = getRecordDisplayName(f).toLowerCase().includes(term);
     const matchesDetails = Object.values(f.details || {}).some(v => v.toLowerCase().includes(term));
     return matchesName || matchesDetails;
   });
@@ -61,6 +63,48 @@ export default function CategoryView({ categoryId }: CategoryViewProps) {
   // Submit Handler
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 1. Phone number validation
+    const phoneKeys = ["contactNo", "linkedMobile"];
+    for (const key of phoneKeys) {
+      if (formData[key] !== undefined && formData[key] !== "") {
+        const val = formData[key];
+        if (!/^\d{10}$/.test(val)) {
+          alert(`Phone/Contact Number must be exactly 10 digits.`);
+          return;
+        }
+      }
+    }
+
+    // 2. Date validation (DD/MM/YY)
+    const dateKeys = ["maturityDate", "dueDate", "willDate"];
+    const dateRegex = /^(0[1-9]|[12]\d|3[01])\/(0[1-9]|1[0-2])\/\d{2}$/;
+    for (const key of dateKeys) {
+      if (formData[key] !== undefined && formData[key] !== "") {
+        const val = formData[key];
+        if (!dateRegex.test(val)) {
+          alert(`Date must be in DD/MM/YY format (e.g. 25/12/26).`);
+          return;
+        }
+      }
+    }
+
+    // 3. IFSC code validation
+    if (formData.ifscCode !== undefined && formData.ifscCode !== "") {
+      if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(formData.ifscCode)) {
+        alert("IFSC Code must be in format ABCD0123456 (11 characters).");
+        return;
+      }
+    }
+
+    // 4. UAN / Account number validation
+    if (formData.uanNumber !== undefined && formData.uanNumber !== "") {
+      if (!/^\d{11,17}$/.test(formData.uanNumber)) {
+        alert("UAN / Account Number must be between 11 and 17 digits.");
+        return;
+      }
+    }
+
     try {
       await handleAddRecord(categoryId, formData);
       router.push(isDemo ? `/vault/${categoryId}?demo=true` : `/vault/${categoryId}`);
@@ -83,7 +127,7 @@ export default function CategoryView({ categoryId }: CategoryViewProps) {
       <div className="panel-card">
         <div className="flex-between" style={{ borderBottom: "1px solid var(--card-border)", paddingBottom: "16px", marginBottom: "24px" }}>
           <div>
-            <h2 className="page-title">{selectedEntry.name} Details</h2>
+            <h2 className="page-title">{getRecordDisplayName(selectedEntry)} Details</h2>
             <span style={{ fontSize: "13px", color: "var(--muted)" }}>
               Type: {currentInfo.label}
             </span>
@@ -131,9 +175,14 @@ export default function CategoryView({ categoryId }: CategoryViewProps) {
         <div className="flex-between" style={{ borderBottom: "1px solid var(--card-border)", paddingBottom: "16px", marginBottom: "24px" }}>
           <div>
             <h2 className="page-title">Add {currentInfo.label}</h2>
-            <span style={{ fontSize: "13px", color: "var(--muted)" }}>
+            <span style={{ fontSize: "13px", color: "var(--muted)", display: "block" }}>
               Home / {currentInfo.label} / Add record
             </span>
+            {lastUpdatedStr && (
+              <span style={{ fontSize: "12px", color: "var(--primary)", display: "block", marginTop: "6px", fontWeight: "600" }}>
+                Last Updated: {lastUpdatedStr}
+              </span>
+            )}
           </div>
 
           <button onClick={() => router.push(isDemo ? `/vault/${categoryId}?demo=true` : `/vault/${categoryId}`)} className="btn-blue">
@@ -163,9 +212,14 @@ export default function CategoryView({ categoryId }: CategoryViewProps) {
       <div className="flex-between" style={{ marginBottom: "20px" }}>
         <div>
           <h2 className="page-title">Show {currentInfo.label}</h2>
-          <span style={{ fontSize: "13px", color: "var(--muted)" }}>
+          <span style={{ fontSize: "13px", color: "var(--muted)", display: "block" }}>
             Home / {currentInfo.label} / Show records
           </span>
+          {lastUpdatedStr && (
+            <span style={{ fontSize: "12px", color: "var(--primary)", display: "block", marginTop: "6px", fontWeight: "600" }}>
+              Last Updated: {lastUpdatedStr}
+            </span>
+          )}
         </div>
 
         <button 

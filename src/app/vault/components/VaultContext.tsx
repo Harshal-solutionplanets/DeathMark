@@ -11,7 +11,8 @@ import {
 } from "@/lib/crypto";
 import { 
   findFileInAppData, createFileMetadata, 
-  uploadFileContent, downloadFileContent 
+  uploadFileContent, downloadFileContent,
+  deleteFileFromDrive
 } from "@/lib/drive";
 
 // Types and Interfaces
@@ -27,6 +28,8 @@ export interface VaultIndex {
   version: string;
   createdAt: string;
   files: VaultFileEntry[];
+  lastUpdated?: Record<string, string>;
+  lastLogin?: string;
 }
 
 export interface InstrumentTypeInfo {
@@ -95,6 +98,17 @@ interface VaultContextType {
   driveFileId: string | null;
   vaultIndex: VaultIndex;
   setVaultIndex: React.Dispatch<React.SetStateAction<VaultIndex>>;
+
+  // Nominee state
+  nomineeDetails: any;
+  setNomineeDetails: React.Dispatch<React.SetStateAction<any>>;
+  nomineeFileId: string | null;
+  setNomineeFileId: React.Dispatch<React.SetStateAction<string | null>>;
+  loadingNominee: boolean;
+  setLoadingNominee: React.Dispatch<React.SetStateAction<boolean>>;
+  handleSaveNominee: (formData: any) => Promise<void>;
+  handleDeleteNominee: () => Promise<void>;
+  fetchNomineeDetails: (key?: CryptoKey) => Promise<void>;
   
   // UI & Search State
   instrumentsOpen: boolean;
@@ -122,7 +136,60 @@ interface VaultContextType {
   handleLogout: () => void;
 
   getCategoryCount: (catId: string) => number;
+  getCategoryLastUpdated: (catId: string) => string | undefined;
+  lastLogin: string | null;
 }
+
+export const formatDateTime = (isoString?: string): string => {
+  if (!isoString) return "";
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return "";
+  
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const dd = pad(d.getDate());
+  const mm = pad(d.getMonth() + 1);
+  const yy = String(d.getFullYear()).slice(-2);
+  
+  let hours = d.getHours();
+  const minutes = pad(d.getMinutes());
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const hh = pad(hours);
+  
+  return `${dd}/${mm}/${yy} @ ${hh}:${minutes} ${ampm}`;
+};
+
+export const getRecordDisplayName = (entry?: VaultFileEntry): string => {
+  if (!entry) return "Untitled";
+  const details = entry.details || {};
+  const computed = 
+    entry.name && entry.name !== "Untitled" ? entry.name : (
+      details.assetTitle ||
+      details.propertyName ||
+      details.personName ||
+      details.dpName ||
+      details.fundHouse ||
+      details.brokerName ||
+      details.bankName ||
+      details.startupName ||
+      details.nftName ||
+      details.issuerName ||
+      details.walletName ||
+      details.providerName ||
+      details.fundName ||
+      details.companyName ||
+      details.exchangeWallet ||
+      details.documentType ||
+      details.websiteName ||
+      details.willTitle ||
+      details.trustName ||
+      (details.uanNumber ? `${details.accountType || "PF/PPF/EPF"} - ${details.uanNumber}` : "") ||
+      "Untitled"
+    );
+  return computed;
+};
+
 
 const VaultContext = createContext<VaultContextType | undefined>(undefined);
 
@@ -148,6 +215,11 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const [driveFileId, setDriveFileId] = useState<string | null>(null);
   const [vaultIndex, setVaultIndex] = useState<VaultIndex>({ version: "1.0", createdAt: "", files: [] });
 
+  // Nominee State
+  const [nomineeDetails, setNomineeDetails] = useState<any>(null);
+  const [nomineeFileId, setNomineeFileId] = useState<string | null>(null);
+  const [loadingNominee, setLoadingNominee] = useState(false);
+
   // UI state
   const [instrumentsOpen, setInstrumentsOpen] = useState(true);
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({});
@@ -156,6 +228,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const [passError, setPassError] = useState("");
   const [copySuccess, setCopySuccess] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
+  const [lastLogin, setLastLogin] = useState<string | null>(null);
 
   // Authentication Checking & Vault Init
   useEffect(() => {
@@ -229,15 +302,132 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
 
       const decrypted = await decryptData(key, { iv: ivB64, ciphertext: ciphertextB64 });
       const parsedIndex = JSON.parse(decrypted) as VaultIndex;
+      
+      const previousLogin = parsedIndex.lastLogin || null;
+      setLastLogin(previousLogin ? formatDateTime(previousLogin) : null);
+
+      parsedIndex.lastLogin = new Date().toISOString();
+      const stringifiedIndex = JSON.stringify(parsedIndex);
+      const encryptedIndex = await encryptData(key, stringifiedIndex);
+      const saltB64 = arrayBufferToBase64(salt.buffer as ArrayBuffer);
+      const newContainerText = `${saltB64}.${encryptedIndex.iv}.${encryptedIndex.ciphertext}`;
+
+      if (isDemo) {
+        localStorage.setItem("deathmark_vault_container", newContainerText);
+      } else {
+        const accessToken = session?.accessToken!;
+        await uploadFileContent(accessToken, driveFileId!, newContainerText);
+      }
 
       setDerivedKey(key);
       setVaultIndex(parsedIndex);
+      await fetchNomineeDetails(key);
       router.push(isDemo ? "/vault?demo=true" : "/vault");
     } catch (err: any) {
       console.error(err);
       setPassError("Incorrect passphrase or corrupted vault file.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch Nominee Details
+  const fetchNomineeDetails = async (keyToUse?: CryptoKey) => {
+    const key = keyToUse || derivedKey;
+    if (!key) return;
+    setLoadingNominee(true);
+    try {
+      if (isDemo) {
+        const containerText = localStorage.getItem("deathmark_nominee_container");
+        if (containerText) {
+          const [, ivB64, ciphertextB64] = containerText.split(".");
+          const decrypted = await decryptData(key, { iv: ivB64, ciphertext: ciphertextB64 });
+          const nominee = JSON.parse(decrypted);
+          setNomineeDetails(nominee);
+        }
+      } else {
+        const accessToken = session?.accessToken;
+        if (!accessToken) return;
+        const file = await findFileInAppData(accessToken, "nominee_details.enc");
+        if (file) {
+          setNomineeFileId(file.id);
+          const rawContent = await downloadFileContent(accessToken, file.id);
+          const [, ivB64, ciphertextB64] = rawContent.split(".");
+          const decrypted = await decryptData(key, { iv: ivB64, ciphertext: ciphertextB64 });
+          const nominee = JSON.parse(decrypted);
+          setNomineeDetails(nominee);
+        }
+      }
+    } catch (err: any) {
+      console.error("Failed to fetch nominee details:", err);
+    } finally {
+      setLoadingNominee(false);
+    }
+  };
+
+  // Save Nominee Details
+  const handleSaveNominee = async (formData: any) => {
+    const key = derivedKey;
+    if (!key) throw new Error("Vault is locked.");
+    setLoadingNominee(true);
+    try {
+      const stringified = JSON.stringify(formData);
+      const encrypted = await encryptData(key, stringified);
+      const saltB64 = arrayBufferToBase64(salt!.buffer as ArrayBuffer);
+      const containerText = `${saltB64}.${encrypted.iv}.${encrypted.ciphertext}`;
+
+      if (isDemo) {
+        localStorage.setItem("deathmark_nominee_container", containerText);
+      } else {
+        const accessToken = session?.accessToken!;
+        let fileId = nomineeFileId;
+        if (!fileId) {
+          const existingFile = await findFileInAppData(accessToken, "nominee_details.enc");
+          if (existingFile) {
+            fileId = existingFile.id;
+          } else {
+            fileId = await createFileMetadata(accessToken, "nominee_details.enc");
+          }
+          setNomineeFileId(fileId);
+        }
+        await uploadFileContent(accessToken, fileId, containerText);
+      }
+      setNomineeDetails(formData);
+    } catch (err: any) {
+      console.error("Failed to save nominee details:", err);
+      throw err;
+    } finally {
+      setLoadingNominee(false);
+    }
+  };
+
+  // Delete Nominee Details
+  const handleDeleteNominee = async () => {
+    if (!confirm("Are you sure you want to permanently delete nominee details? This cannot be undone.")) return;
+    const key = derivedKey;
+    if (!key) throw new Error("Vault is locked.");
+    setLoadingNominee(true);
+    try {
+      if (isDemo) {
+        localStorage.removeItem("deathmark_nominee_container");
+      } else {
+        const accessToken = session?.accessToken!;
+        let fileId = nomineeFileId;
+        if (!fileId) {
+          const existingFile = await findFileInAppData(accessToken, "nominee_details.enc");
+          if (existingFile) fileId = existingFile.id;
+        }
+        if (fileId) {
+          await deleteFileFromDrive(accessToken, fileId);
+        }
+      }
+      setNomineeDetails(null);
+      setNomineeFileId(null);
+    } catch (err: any) {
+      console.error("Failed to delete nominee details:", err);
+      throw err;
+    } finally {
+      setLoadingNominee(false);
     }
   };
 
@@ -282,13 +472,15 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       const emptyIndex: VaultIndex = {
         version: "1.0",
         createdAt: new Date().toISOString(),
-        files: []
+        files: [],
+        lastLogin: new Date().toISOString()
       };
+      setLastLogin(null);
 
       const stringified = JSON.stringify(emptyIndex);
       const encrypted = await encryptData(key, stringified);
 
-      const saltB64 = arrayBufferToBase64(generatedSalt.buffer);
+      const saltB64 = arrayBufferToBase64(generatedSalt.buffer as ArrayBuffer);
       const containerText = `${saltB64}.${encrypted.iv}.${encrypted.ciphertext}`;
 
       if (isDemo) {
@@ -301,6 +493,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       }
 
       setVaultIndex(emptyIndex);
+      await fetchNomineeDetails(key);
       router.push(isDemo ? "/vault?demo=true" : "/vault");
     } catch (err: any) {
       console.error(err);
@@ -318,7 +511,28 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     setLoadingMessage("Encrypting asset details...");
 
     try {
-      const displayName = formData.propertyName || formData.personName || formData.fundHouse || formData.brokerName || formData.bankName || formData.startupName || formData.nftName || formData.issuerName || formData.walletName || "Untitled";
+      const displayName = 
+        formData.assetTitle || 
+        formData.propertyName || 
+        formData.personName || 
+        formData.dpName || 
+        formData.fundHouse || 
+        formData.brokerName || 
+        formData.bankName || 
+        formData.startupName || 
+        formData.nftName || 
+        formData.issuerName || 
+        formData.walletName || 
+        formData.providerName || 
+        formData.fundName || 
+        formData.companyName || 
+        formData.exchangeWallet || 
+        formData.documentType || 
+        formData.websiteName || 
+        formData.willTitle || 
+        formData.trustName || 
+        (formData.uanNumber ? `${formData.accountType || "PF/PPF/EPF"} - ${formData.uanNumber}` : "") ||
+        "Untitled";
 
       const newEntryId = crypto.randomUUID();
       const newEntry: VaultFileEntry = {
@@ -329,14 +543,19 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         details: formData
       };
 
+      const now = new Date().toISOString();
       const updatedIndex: VaultIndex = {
         ...vaultIndex,
-        files: [...vaultIndex.files, newEntry]
+        files: [...vaultIndex.files, newEntry],
+        lastUpdated: {
+          ...(vaultIndex.lastUpdated || {}),
+          [category]: now
+        }
       };
 
       const stringifiedIndex = JSON.stringify(updatedIndex);
       const encryptedIndex = await encryptData(derivedKey, stringifiedIndex);
-      const saltB64 = arrayBufferToBase64(salt!.buffer);
+      const saltB64 = arrayBufferToBase64(salt!.buffer as ArrayBuffer);
       const containerText = `${saltB64}.${encryptedIndex.iv}.${encryptedIndex.ciphertext}`;
 
       if (isDemo) {
@@ -359,21 +578,26 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
 
   // Delete Record (text-only, no separate drive files to clean up)
   const handleDeleteRecord = async (entry: VaultFileEntry): Promise<boolean> => {
-    if (!confirm(`Are you sure you want to permanently delete "${entry.name}"?`)) return false;
+    if (!confirm(`Are you sure you want to permanently delete "${getRecordDisplayName(entry)}"?`)) return false;
 
     setLoading(true);
     setLoadingMessage("Removing record...");
 
     try {
       const updatedFiles = vaultIndex.files.filter(f => f.id !== entry.id);
+      const now = new Date().toISOString();
       const updatedIndex: VaultIndex = {
         ...vaultIndex,
-        files: updatedFiles
+        files: updatedFiles,
+        lastUpdated: {
+          ...(vaultIndex.lastUpdated || {}),
+          [entry.category]: now
+        }
       };
 
       const stringifiedIndex = JSON.stringify(updatedIndex);
       const encryptedIndex = await encryptData(derivedKey!, stringifiedIndex);
-      const saltB64 = arrayBufferToBase64(salt!.buffer);
+      const saltB64 = arrayBufferToBase64(salt!.buffer as ArrayBuffer);
       const containerText = `${saltB64}.${encryptedIndex.iv}.${encryptedIndex.ciphertext}`;
 
       if (isDemo) {
@@ -467,6 +691,17 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     return vaultIndex.files.filter(f => f.category === catId).length;
   };
 
+  const getCategoryLastUpdated = (catId: string): string | undefined => {
+    if (vaultIndex.lastUpdated?.[catId]) {
+      return vaultIndex.lastUpdated[catId];
+    }
+    const catFiles = vaultIndex.files.filter(f => f.category === catId);
+    if (catFiles.length === 0) return undefined;
+    const times = catFiles.map(f => new Date(f.createdAt).getTime());
+    const latestTime = Math.max(...times);
+    return new Date(latestTime).toISOString();
+  };
+
   return (
     <VaultContext.Provider value={{
       isDemo, session, status, loading, setLoading, loadingMessage, setLoadingMessage,
@@ -475,7 +710,9 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       instrumentsOpen, setInstrumentsOpen, openCategories, setOpenCategories, searchTerm, setSearchTerm,
       passVisible, setPassVisible, passError, setPassError, copySuccess, setCopySuccess,
       checkExistingVault, handleUnlock, handleCreatePassphrase, handleVerifyMnemonic, handleAddRecord,
-      handleDeleteRecord, handleVerifyIntegrity, handleExportVault, handleLogout, getCategoryCount
+      handleDeleteRecord, handleVerifyIntegrity, handleExportVault, handleLogout, getCategoryCount,
+      nomineeDetails, setNomineeDetails, nomineeFileId, setNomineeFileId, loadingNominee, setLoadingNominee,
+      handleSaveNominee, handleDeleteNominee, fetchNomineeDetails, getCategoryLastUpdated, lastLogin
     }}>
       {children}
     </VaultContext.Provider>

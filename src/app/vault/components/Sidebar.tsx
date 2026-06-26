@@ -3,15 +3,16 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { FolderKey, LogOut, Notebook, ChevronDown, ChevronRight, Coins } from "lucide-react";
-import { useVault, INSTRUMENT_TYPES } from "./VaultContext";
+import { FolderKey, LogOut, Notebook, ChevronDown, ChevronRight, Coins, UserCheck } from "lucide-react";
+import { useVault, INSTRUMENT_TYPES, getRecordDisplayName } from "./VaultContext";
 
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const {
     session, isDemo, vaultIndex, getCategoryCount, handleLogout,
-    instrumentsOpen, setInstrumentsOpen, openCategories, setOpenCategories
+    instrumentsOpen, setInstrumentsOpen, openCategories, setOpenCategories,
+    nomineeDetails
   } = useVault();
 
   // If a category has files, we can automatically expand it if we are currently visiting its route
@@ -62,6 +63,22 @@ export default function Sidebar() {
             <Notebook size={18} />
             <span>Dashboard</span>
           </span>
+        </Link>
+
+        <Link 
+          href={isDemo ? "/vault/nominee?demo=true" : "/vault/nominee"}
+          className={`menu-item ${pathname === "/vault/nominee" ? "active" : ""}`}
+          style={{ textDecoration: "none" }}
+        >
+          <span className="menu-icon-text">
+            <UserCheck size={18} />
+            <span>Vault Nominee</span>
+          </span>
+          {nomineeDetails && (
+            <span style={{ fontSize: "10px", backgroundColor: "rgba(16,185,129,0.15)", color: "#10b981", padding: "1px 6px", borderRadius: "10px", fontWeight: "bold" }}>
+              Enrolled
+            </span>
+          )}
         </Link>
 
 
@@ -125,7 +142,7 @@ export default function Sidebar() {
                           className="nested-record-item"
                           style={{ textDecoration: "none" }}
                         >
-                          • {file.name}
+                          • {getRecordDisplayName(file)}
                         </Link>
                       ))}
                     </div>

@@ -61,6 +61,15 @@ export default function CategoryTable({ categoryId, entries, onView, onDelete }:
     if (col === "NFT Name") return details.nftName || entry.name;
     if (col === "Collection") return details.collectionName || "N/A";
 
+    if (col === "Provider") return details.providerName || "N/A";
+    if (col === "Company") return details.companyName || "N/A";
+    if (col === "Startup Name") return details.startupName || "N/A";
+    if (col === "Equity %") return details.equityPercent || "N/A";
+    if (col === "Investment") return details.amount || "N/A";
+    if (col === "Asset Title") return details.assetTitle || entry.name;
+    if (col === "Fund Name") return details.fundName || "N/A";
+    if (col === "Investment Code") return details.investmentCode || "N/A";
+
     return "N/A";
   };
 

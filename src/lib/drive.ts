@@ -7,6 +7,31 @@ export interface DriveFile {
 }
 
 /**
+ * Extracts descriptive errors from Google Drive API responses.
+ */
+async function handleDriveError(res: Response, prefix: string): Promise<never> {
+  const errorText = await res.text();
+  console.error(`${prefix} Error:`, errorText);
+  let detailMessage = res.statusText || "";
+  try {
+    const parsed = JSON.parse(errorText);
+    if (parsed.error && parsed.error.message) {
+      detailMessage = parsed.error.message;
+    }
+  } catch (e) {
+    if (errorText) {
+      detailMessage = errorText;
+    }
+  }
+  
+  if (res.status === 403 && detailMessage.toLowerCase().includes("scope")) {
+    throw new Error(`${prefix}: ${detailMessage} (Status: 403). Please log out and sign back in to grant appData permissions.`);
+  }
+
+  throw new Error(`${prefix}: ${detailMessage} (Status Code: ${res.status})`);
+}
+
+/**
  * Searches for a file by name in the appDataFolder.
  */
 export async function findFileInAppData(accessToken: string, filename: string): Promise<DriveFile | null> {
@@ -20,9 +45,7 @@ export async function findFileInAppData(accessToken: string, filename: string): 
   });
 
   if (!res.ok) {
-    const errorText = await res.text();
-    console.error("Google Drive API Search Error:", errorText);
-    throw new Error(`Failed to search for file in appDataFolder: ${res.statusText}`);
+    await handleDriveError(res, "Failed to search for file in appDataFolder");
   }
 
   const data = await res.json();
@@ -47,9 +70,7 @@ export async function createFileMetadata(accessToken: string, name: string): Pro
   });
 
   if (!res.ok) {
-    const errorText = await res.text();
-    console.error("Google Drive API Create Metadata Error:", errorText);
-    throw new Error(`Failed to create file metadata: ${res.statusText}`);
+    await handleDriveError(res, "Failed to create file metadata");
   }
 
   const data = await res.json();
@@ -71,9 +92,7 @@ export async function uploadFileContent(accessToken: string, fileId: string, con
   });
 
   if (!res.ok) {
-    const errorText = await res.text();
-    console.error("Google Drive API Upload Media Error:", errorText);
-    throw new Error(`Failed to upload file content: ${res.statusText}`);
+    await handleDriveError(res, "Failed to upload file content");
   }
 }
 
@@ -92,9 +111,7 @@ export async function downloadFileContent(accessToken: string, fileId: string): 
     if (res.status === 404) {
       throw new Error("404");
     }
-    const errorText = await res.text();
-    console.error("Google Drive API Download Error:", errorText);
-    throw new Error(`Failed to download file: ${res.statusText}`);
+    await handleDriveError(res, "Failed to download file");
   }
 
   return res.text();
@@ -113,8 +130,6 @@ export async function deleteFileFromDrive(accessToken: string, fileId: string): 
   });
 
   if (!res.ok) {
-    const errorText = await res.text();
-    console.error("Google Drive API Delete Error:", errorText);
-    throw new Error(`Failed to delete file: ${res.statusText}`);
+    await handleDriveError(res, "Failed to delete file");
   }
 }
