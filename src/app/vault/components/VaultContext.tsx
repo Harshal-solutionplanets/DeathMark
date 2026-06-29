@@ -493,6 +493,12 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         const fileId = await createFileMetadata(accessToken, "vault_index.enc");
         await uploadFileContent(accessToken, fileId, containerText);
         setDriveFileId(fileId);
+
+        try {
+          await fetch("/api/user/initialize", { method: "POST" });
+        } catch (e) {
+          console.error("Failed to mark vault initialization in database:", e);
+        }
       }
 
       setVaultIndex(emptyIndex);

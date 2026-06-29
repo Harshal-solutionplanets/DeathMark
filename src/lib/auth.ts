@@ -33,16 +33,12 @@ export const authOptions: NextAuthOptions = {
           const db = client.db("deathmark");
           const usersCollection = db.collection("users");
 
-          const existingUser = await usersCollection.findOne({ email: user.email });
-          const isReturning = !!existingUser;
-
           await usersCollection.updateOne(
             { email: user.email },
             {
               $set: {
                 email: user.email,
                 lastLogin: new Date(),
-                isReturningUser: isReturning,
               },
             },
             { upsert: true }
@@ -60,13 +56,13 @@ export const authOptions: NextAuthOptions = {
         token.refreshToken = account.refresh_token;
         token.expiresAt = Math.floor(Date.now() / 1000 + (account.expires_in || 3600));
       }
-      if (user?.email) {
+      if (token.email) {
         try {
           const client = await clientPromise;
           const db = client.db("deathmark");
           const usersCollection = db.collection("users");
-          const dbUser = await usersCollection.findOne({ email: user.email });
-          token.isReturningUser = dbUser ? !!dbUser.isReturningUser : false;
+          const dbUser = await usersCollection.findOne({ email: token.email });
+          token.isReturningUser = dbUser ? !!dbUser.hasCreatedVault : false;
         } catch (e) {
           console.error(e);
         }
