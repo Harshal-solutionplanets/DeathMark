@@ -16,13 +16,13 @@ if (process.env.NODE_ENV === "development") {
   };
 
   if (!globalWithMongo._mongoClientPromise) {
-    client = new MongoClient(uri);
+    client = new MongoClient(uri, { autoSelectFamily: false });
     globalWithMongo._mongoClientPromise = client.connect();
   }
   clientPromise = globalWithMongo._mongoClientPromise;
 } else {
   // In production mode, it's best to not use a global variable.
-  client = new MongoClient(uri);
+  client = new MongoClient(uri, { autoSelectFamily: false });
   clientPromise = client.connect();
 }
 
