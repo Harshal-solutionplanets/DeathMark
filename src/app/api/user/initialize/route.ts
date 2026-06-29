@@ -6,7 +6,9 @@ import clientPromise from "@/lib/db";
 export async function POST() {
   try {
     const session = await getServerSession(authOptions);
+    console.log("[Initialize API] Session detected:", session);
     if (!session?.user?.email) {
+      console.log("[Initialize API] No email found in session. Unauthorized.");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -14,13 +16,16 @@ export async function POST() {
     const db = client.db("deathmark");
     const usersCollection = db.collection("users");
 
-    await usersCollection.updateOne(
+    console.log("[Initialize API] Updating user in MongoDB:", session.user.email);
+    const result = await usersCollection.updateOne(
       { email: session.user.email },
       { $set: { hasCreatedVault: true } }
     );
+    console.log("[Initialize API] MongoDB Update Result:", result);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    console.error("[Initialize API] Error occurred:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

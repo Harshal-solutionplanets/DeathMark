@@ -266,9 +266,15 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
           const [saltB64] = rawContent.split(".");
           setSalt(new Uint8Array(base64ToArrayBuffer(saltB64)));
 
-          fetch("/api/user/initialize", { method: "POST" }).catch((e) => {
-            console.error("Failed to sync vault initialization state:", e);
-          });
+          console.log("[VaultContext] Vault found on Drive, syncing to database...");
+          fetch("/api/user/initialize", { method: "POST" })
+            .then(async (res) => {
+              const text = await res.text();
+              console.log("[VaultContext] DB sync response:", res.status, text);
+            })
+            .catch((e) => {
+              console.error("[VaultContext] Failed to sync vault initialization state:", e);
+            });
         }
       }
     } catch (err: any) {
