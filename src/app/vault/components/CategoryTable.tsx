@@ -32,7 +32,15 @@ export default function CategoryTable({ categoryId, entries, onView, onDelete }:
         </div>
       );
     }
-    if (col === "Created At") return new Date(entry.createdAt).toLocaleDateString();
+    if (col === "Created At") {
+      const d = new Date(entry.createdAt);
+      if (isNaN(d.getTime())) return "N/A";
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const dd = pad(d.getDate());
+      const mm = pad(d.getMonth() + 1);
+      const yy = String(d.getFullYear()).slice(-2);
+      return `${dd}/${mm}/${yy}`;
+    }
 
     // Mapping columns to entry details
     if (col === "Person Type") return details.personType || "Executor";
