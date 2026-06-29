@@ -266,11 +266,9 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
           const [saltB64] = rawContent.split(".");
           setSalt(new Uint8Array(base64ToArrayBuffer(saltB64)));
 
-          try {
-            await fetch("/api/user/initialize", { method: "POST" });
-          } catch (e) {
+          fetch("/api/user/initialize", { method: "POST" }).catch((e) => {
             console.error("Failed to sync vault initialization state:", e);
-          }
+          });
         }
       }
     } catch (err: any) {
