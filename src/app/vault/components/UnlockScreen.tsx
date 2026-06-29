@@ -14,6 +14,7 @@ export default function UnlockScreen() {
 
   // Local step state for onboarding: "passphrase" | "show-mnemonic" | "verify-mnemonic"
   const [setupStep, setSetupStep] = useState<"passphrase" | "show-mnemonic" | "verify-mnemonic">("passphrase");
+  const [showWarningModal, setShowWarningModal] = useState(true);
 
   const onCreatePassphraseSubmit = (e: React.FormEvent) => {
     handleCreatePassphrase(e);
@@ -90,6 +91,52 @@ export default function UnlockScreen() {
   if (setupStep === "passphrase") {
     return (
       <div className="signin-wrapper">
+        {session?.isReturningUser && !salt && showWarningModal && (
+          <div style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.82)",
+            backdropFilter: "blur(8px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: "20px"
+          }}>
+            <div className="signin-card" style={{ maxWidth: "420px", border: "1px solid rgba(239, 68, 68, 0.2)", position: "relative" }}>
+              <div style={{ textAlign: "center", padding: "20px 10px" }}>
+                <div style={{
+                  width: "56px",
+                  height: "56px",
+                  borderRadius: "50%",
+                  backgroundColor: "rgba(239, 68, 68, 0.1)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 16px"
+                }}>
+                  <ShieldAlert size={28} style={{ color: "#ef4444" }} />
+                </div>
+                <h2 style={{ color: "#fff", fontSize: "20px", fontWeight: "600", marginBottom: "8px" }}>Data Missing</h2>
+                <p style={{ color: "#cbd5e1", fontSize: "14px", lineHeight: "1.6", marginBottom: "24px" }}>
+                  Your data has been deleted from your Google Drive. Please fill in all your details again.
+                </p>
+                <button 
+                  type="button"
+                  onClick={() => setShowWarningModal(false)}
+                  className="btn-cta-primary-premium" 
+                  style={{ width: "100%", border: "none" }}
+                >
+                  Acknowledge & Reinitialize
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="signin-card" style={{ maxWidth: "500px" }}>
           <div className="signin-header">
             <div className="logo-container flex-center">
@@ -100,14 +147,6 @@ export default function UnlockScreen() {
           </div>
 
           <form onSubmit={onCreatePassphraseSubmit} className="signin-body" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            {session?.isReturningUser && !salt && (
-              <div style={{ backgroundColor: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.3)", borderRadius: "10px", padding: "16px", display: "flex", gap: "12px" }}>
-                <ShieldAlert style={{ color: "#ef4444", flexShrink: 0 }} size={20} />
-                <p style={{ fontSize: "13px", color: "#fca5a5", lineHeight: "1.5", margin: 0, fontWeight: "500" }}>
-                  Your data has been deleted from your Google Drive. Please fill in all your details again.
-                </p>
-              </div>
-            )}
 
             <div style={{ backgroundColor: "rgba(99, 102, 241, 0.05)", border: "1px solid rgba(99, 102, 241, 0.15)", borderRadius: "10px", padding: "16px", display: "flex", gap: "12px" }}>
               <Info style={{ color: "var(--primary)", flexShrink: 0 }} size={20} />
