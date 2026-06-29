@@ -33,12 +33,16 @@ export const authOptions: NextAuthOptions = {
           const db = client.db("deathmark");
           const usersCollection = db.collection("users");
 
+          const existingUser = await usersCollection.findOne({ email: user.email });
+          const isReturning = !!existingUser;
+
           await usersCollection.updateOne(
             { email: user.email },
             {
               $set: {
                 email: user.email,
                 lastLogin: new Date(),
+                isReturningUser: isReturning,
               },
             },
             { upsert: true }
@@ -49,20 +53,31 @@ export const authOptions: NextAuthOptions = {
       }
       return true;
     },
-    async jwt({ token, account }) {
+    async jwt({ token, account, user }) {
       // Persist the OAuth access_token and refresh_token to the token right after signin
       if (account) {
         token.accessToken = account.access_token;
         token.refreshToken = account.refresh_token;
         token.expiresAt = Math.floor(Date.now() / 1000 + (account.expires_in || 3600));
       }
-      // TODO: Handle token refresh logic here if token is expired
+      if (user?.email) {
+        try {
+          const client = await clientPromise;
+          const db = client.db("deathmark");
+          const usersCollection = db.collection("users");
+          const dbUser = await usersCollection.findOne({ email: user.email });
+          token.isReturningUser = dbUser ? !!dbUser.isReturningUser : false;
+        } catch (e) {
+          console.error(e);
+        }
+      }
       return token;
     },
     async session({ session, token }) {
       // Send properties to the client, like an access_token and user id from a provider.
       session.accessToken = token.accessToken as string;
       session.error = token.error as string | undefined;
+      session.isReturningUser = token.isReturningUser as boolean | undefined;
       return session;
     },
   },

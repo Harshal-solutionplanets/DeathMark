@@ -100,6 +100,15 @@ export default function UnlockScreen() {
           </div>
 
           <form onSubmit={onCreatePassphraseSubmit} className="signin-body" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            {session?.isReturningUser && !salt && (
+              <div style={{ backgroundColor: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.3)", borderRadius: "10px", padding: "16px", display: "flex", gap: "12px" }}>
+                <ShieldAlert style={{ color: "#ef4444", flexShrink: 0 }} size={20} />
+                <p style={{ fontSize: "13px", color: "#fca5a5", lineHeight: "1.5", margin: 0, fontWeight: "500" }}>
+                  Your data has been deleted from your Google Drive. Please fill in all your details again.
+                </p>
+              </div>
+            )}
+
             <div style={{ backgroundColor: "rgba(99, 102, 241, 0.05)", border: "1px solid rgba(99, 102, 241, 0.15)", borderRadius: "10px", padding: "16px", display: "flex", gap: "12px" }}>
               <Info style={{ color: "var(--primary)", flexShrink: 0 }} size={20} />
               <p style={{ fontSize: "13px", color: "#cbd5e1", lineHeight: "1.5" }}>
